@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ election_title }}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="flag-strip"></div>
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="brand">
+        <img src="/static/onpe_logo.png" alt="ONPE" class="onpe-logo">
+        <div class="brand-copy">
+          <span class="brand-kicker">PROCESO ELECTORAL ESCOLAR</span>
+          <strong>{{ election_title }}</strong>
+          <small>{{ school_name }}</small>
+        </div>
+      </div>
+      <div class="header-badge">
+        <span>Uso educativo</span>
+        <strong>Voto secreto · Registro digital</strong>
+      </div>
+    </div>
+  </header>
+
+  <main class="page-shell">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="site-footer">
+    <div>{{ school_name }}</div>
+    <div>Plataforma escolar de votación · Inspirada en el proceso electoral peruano</div>
+  </footer>
+</body>
+</html>

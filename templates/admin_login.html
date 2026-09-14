@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="center-wrap">
+  <div class="login-panel">
+    <div class="pill-red">ACCESO RESTRINGIDO</div>
+    <h1>Panel de administración</h1>
+    <p class="hero-text">Ingreso exclusivo para el comité electoral o responsable del proceso.</p>
+    {% if request.query_params.get('error') %}<div class="alert-box">Contraseña incorrecta.</div>{% endif %}
+    <form method="post" action="/admin/login" class="stack-form">
+      <div class="field"><label>Contraseña</label><input type="password" name="password" required autofocus></div>
+      <button class="btn btn-primary btn-large" type="submit">INGRESAR</button>
+    </form>
+    <a href="/" class="text-link">← Volver a la pantalla de votación</a>
+  </div>
+</section>
+{% endblock %}

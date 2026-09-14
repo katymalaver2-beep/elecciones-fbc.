@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="ballot-page">
+  <div class="ballot-top">
+    <div>
+      <span class="pill-red">CÉDULA DE VOTACIÓN</span>
+      <h1>Elige una sola opción</h1>
+      <p class="hero-text">Marca la lista de tu preferencia y luego confirma tu voto.</p>
+    </div>
+    <div class="voter-chip">
+      <strong>{{ student.grade }}.º {{ student.section }}</strong>
+      <span>{{ student.full_name }}</span>
+    </div>
+  </div>
+
+  <form action="/vote/select" method="post">
+    <div class="candidate-grid-pro">
+      {% for c in candidates %}
+      <label class="candidate-card-pro">
+        <input type="radio" name="candidate_id" value="{{ c.id }}" required>
+        <div class="card-head">
+          <span>LISTA {{ c.list_number }}</span>
+          <div class="radio-dot"></div>
+        </div>
+        <div class="symbol-frame">{% if c.symbol_path %}<img src="/{{ c.symbol_path }}" alt="Símbolo {{ c.list_name }}">{% else %}<div class="symbol-fallback">{{ c.list_number }}</div>{% endif %}</div>
+        <h2>{{ c.list_name }}</h2>
+        <p>{{ c.candidate_name }}</p>
+        <strong class="select-text">Seleccionar opción</strong>
+      </label>
+      {% endfor %}
+
+      <label class="candidate-card-pro blank-option">
+        <input type="radio" name="candidate_id" value="blank" required>
+        <div class="card-head">
+          <span>OPCIÓN</span>
+          <div class="radio-dot"></div>
+        </div>
+        <div class="symbol-frame"><div class="blank-box"></div></div>
+        <h2>VOTO EN BLANCO</h2>
+        <p>No seleccionar ninguna lista.</p>
+        <strong class="select-text">Seleccionar opción</strong>
+      </label>
+    </div>
+    <div class="action-row center"><button class="btn btn-primary btn-large" type="submit">CONTINUAR Y CONFIRMAR</button></div>
+  </form>
+</section>
+{% endblock %}

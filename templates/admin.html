@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="admin-topbar">
+  <div>
+    <span class="pill-red">GESTIÓN ELECTORAL</span>
+    <h1>Panel de administración</h1>
+    <p class="hero-text">Monitoreo, configuración y resultados del proceso electoral escolar.</p>
+  </div>
+  <div class="admin-actions">
+    <a class="btn btn-light" href="/">Pantalla de votación</a>
+    <a class="btn btn-dark" href="/admin/logout">Cerrar sesión</a>
+  </div>
+</div>
+
+{% if request.query_params.get('msg') %}<div class="alert-box">{{ request.query_params.get('msg') }}</div>{% endif %}
+{% if first_run %}<div class="state-box info"><strong>Primer ingreso</strong><span>Cambia la contraseña y configura padrón y candidatos antes de abrir la votación.</span></div>{% endif %}
+
+<section class="election-status-card">
+  <div>
+    <small>Estado actual</small>
+    <strong class="{{ 'txt-open' if election_open else 'txt-closed' }}">{{ 'VOTACIÓN ABIERTA' if election_open else 'VOTACIÓN CERRADA' }}</strong>
+  </div>
+  <form action="/admin/toggle-election" method="post">
+    {% if election_open %}<input type="hidden" name="action" value="close"><button class="btn btn-danger" type="submit">CERRAR VOTACIÓN</button>
+    {% else %}<input type="hidden" name="action" value="open"><button class="btn btn-success" type="submit">ABRIR VOTACIÓN</button>{% endif %}
+  </form>
+</section>
+
+<nav class="tab-links">
+  <a href="#resumen">Resumen</a>
+  <a href="#participacion">Participación</a>
+  <a href="#resultados">Resultados</a>
+  <a href="#candidatos">Candidatos</a>
+  <a href="#padron">Padrón</a>
+  <a href="#configuracion">Configuración</a>
+  <a href="#reinicio">Reinicio</a>
+</nav>
+
+<section id="resumen" class="admin-card">
+  <div class="section-header"><h2>Resumen general</h2></div>
+  <div class="metric-cards">
+    <div class="metric-card"><span>Padrón total</span><strong>{{ total }}</strong></div>
+    <div class="metric-card"><span>Ya votaron</span><strong>{{ voted }}</strong></div>
+    <div class="metric-card"><span>Faltan votar</span><strong>{{ missing }}</strong></div>
+    <div class="metric-card"><span>Participación</span><strong>{{ turnout }}%</strong></div>
+  </div>
+  <div class="progress-wrap"><div class="progress-bar"><i style="width:{{ turnout }}%"></i></div><span>{{ turnout }}% de participación</span></div>
+</section>
+
+<section id="participacion" class="admin-card">
+  <div class="section-header">
+    <h2>Participación por grado y sección</h2>
+    <a class="btn btn-light" href="/admin/export/turnout.csv">Exportar participación</a>
+  </div>
+  <div class="table-shell"><table>
+    <thead><tr><th>Grado</th><th>Sección</th><th>Padrón</th><th>Votaron</th><th>Faltan</th><th>%</th></tr></thead>
+    <tbody>
+      {% for r in classrooms %}
+      <tr>
+        <td>{{ r.grade }}.º</td><td>{{ r.section }}</td><td>{{ r.total }}</td><td>{{ r.voted }}</td><td>{{ r.missing }}</td>
+        <td><span class="badge {{ 'good' if r.pct==100 else ('mid' if r.pct>=50 else 'low') }}">{{ r.pct }}%</span></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6">Aún no hay padrón cargado.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+</section>
+
+<section id="resultados" class="admin-card">
+  <div class="section-header">
+    <h2>Resultados electorales</h2>
+    {% if show_results %}<a class="btn btn-light" href="/admin/export/results.csv">Exportar resultados</a>{% endif %}
+  </div>
+
+  {% if show_results %}
+  <div class="results-highlight">
+    <div>
+      <small>Total de votos emitidos</small>
+      <strong>{{ total_votes }}</strong>
+    </div>
+    <div>
+      <small>Lista con mayor votación</small>
+      {% if results|length %}
+      <strong>Lista {{ results[0].list_number }} · {{ results[0].list_name }}</strong>
+      <span>{{ results[0].candidate_name }} · {{ results[0].votes }} votos</span>
+      {% else %}
+      <strong>Sin resultados aún</strong>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="chart-shell">
+    <canvas id="resultsChart" height="120"></canvas>
+  </div>
+
+  <div class="results-list">
+    {% for r in results %}
+    <div class="result-row">
+      <div class="result-left">
+        {% if r.symbol_path %}<img src="/{{ r.symbol_path }}" alt="Símbolo">{% else %}<div class="mini-symbol">{{ r.list_number }}</div>{% endif %}
+        <div><strong>Lista {{ r.list_number }} · {{ r.list_name }}</strong><span>{{ r.candidate_name }}</span></div>
+      </div>
+      <div class="result-right"><strong>{{ r.votes }} votos</strong><span>{{ r.pct }}%</span></div>
+    </div>
+    {% endfor %}
+    <div class="result-row blank-row">
+      <div class="result-left"><div class="mini-symbol">—</div><div><strong>Voto en blanco</strong></div></div>
+      <div class="result-right"><strong>{{ blank_result.votes }} votos</strong><span>{{ blank_result.pct }}%</span></div>
+    </div>
+  </div>
+  {% else %}
+  <div class="locked-box"><div>🔒</div><strong>Resultados ocultos mientras la votación está abierta</strong><span>Esto evita influir en el electorado durante la jornada. Puedes habilitar la visualización en Configuración si lo deseas.</span></div>
+  {% endif %}
+</section>
+
+<section id="candidatos" class="admin-card">
+  <div class="section-header"><h2>Candidatos y listas</h2></div>
+  <div class="mini-grid">
+    {% for c in candidates %}
+    <div class="candidate-mini {{ '' if c.active else 'off' }}">
+      {% if c.symbol_path %}<img src="/{{ c.symbol_path }}" alt="Símbolo">{% else %}<div class="mini-symbol">{{ c.list_number }}</div>{% endif %}
+      <div class="candidate-mini-copy"><small>LISTA {{ c.list_number }}</small><strong>{{ c.list_name }}</strong><span>{{ c.candidate_name }}</span></div>
+      <form method="post" action="/admin/candidates/{{ c.id }}/toggle"><button class="btn {{ 'btn-light' if c.active else 'btn-success' }}" type="submit">{{ 'Desactivar' if c.active else 'Activar' }}</button></form>
+    </div>
+    {% else %}
+    <p>Aún no has registrado candidatos.</p>
+    {% endfor %}
+  </div>
+  <form class="form-panel" method="post" action="/admin/candidates/add" enctype="multipart/form-data">
+    <h3>Agregar candidato</h3>
+    <div class="form-grid">
+      <div class="field"><label>N.º de lista</label><input name="list_number" required placeholder="1"></div>
+      <div class="field"><label>Nombre de la lista</label><input name="list_name" required placeholder="Lista Futuro"></div>
+      <div class="field"><label>Candidato(a)</label><input name="candidate_name" required placeholder="Apellidos y nombres"></div>
+      <div class="field"><label>Símbolo o logo</label><input type="file" name="symbol" accept=".png,.jpg,.jpeg,.webp"></div>
+    </div>
+    <button class="btn btn-primary" type="submit">AGREGAR CANDIDATO</button>
+  </form>
+</section>
+
+<section id="padron" class="admin-card">
+  <div class="section-header"><h2>Padrón de estudiantes</h2></div>
+  <p class="muted">Formato requerido: columnas <strong>grado</strong>, <strong>seccion</strong> y <strong>apellidos_nombres</strong>. Acepta archivos CSV o XLSX.</p>
+  <form class="form-panel" method="post" action="/admin/roster/upload" enctype="multipart/form-data">
+    <div class="form-grid">
+      <div class="field"><label>Archivo</label><input type="file" name="roster" accept=".csv,.xlsx" required></div>
+      <div class="field"><label>Modo de carga</label><select name="mode"><option value="append">Agregar al padrón existente</option><option value="replace">Reemplazar padrón (solo si no hay votos)</option></select></div>
+    </div>
+    <button class="btn btn-primary" type="submit">CARGAR PADRÓN</button>
+  </form>
+</section>
+
+<section id="configuracion" class="admin-card">
+  <div class="section-header"><h2>Configuración general</h2></div>
+  <form class="form-panel" method="post" action="/admin/settings">
+    <div class="form-grid">
+      <div class="field"><label>Institución educativa</label><input name="school_name" value="{{ school_name }}" required></div>
+      <div class="field"><label>Nombre del proceso</label><input name="election_title" value="{{ election_title }}" required></div>
+    </div>
+    <label class="checkbox-line"><input type="checkbox" name="show_results_live" {% if show_results_live %}checked{% endif %}> Permitir ver resultados mientras la elección sigue abierta</label>
+    <button class="btn btn-primary" type="submit">GUARDAR CONFIGURACIÓN</button>
+  </form>
+
+  <form class="form-panel" method="post" action="/admin/password">
+    <h3>Cambiar contraseña</h3>
+    <div class="form-grid">
+      <div class="field"><label>Contraseña actual</label><input type="password" name="current_password" required></div>
+      <div class="field"><label>Nueva contraseña</label><input type="password" name="new_password" minlength="8" required></div>
+    </div>
+    <button class="btn btn-dark" type="submit">ACTUALIZAR CONTRASEÑA</button>
+  </form>
+</section>
+
+<section id="reinicio" class="admin-card danger-card">
+  <div class="section-header"><h2>Reiniciar votación</h2></div>
+  <p>Elimina todos los votos registrados y vuelve a marcar a todos los estudiantes como no votantes. El padrón y los candidatos se conservan.</p>
+  <form class="form-panel danger-form" method="post" action="/admin/reset">
+    <div class="field"><label>Escribe REINICIAR para confirmar</label><input name="confirmation" required></div>
+    <button class="btn btn-danger" type="submit">REINICIAR VOTACIÓN</button>
+  </form>
+</section>
+
+{% if show_results %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+const labels = [
+  {% for r in results %}'Lista {{ r.list_number }}',{% endfor %}
+  'Blanco'
+];
+const dataValues = [
+  {% for r in results %}{{ r.votes }},{% endfor %}
+  {{ blank_result.votes }}
+];
+const ctx = document.getElementById('resultsChart');
+new Chart(ctx, {
+  type: 'bar',
+  data: {
+    labels: labels,
+    datasets: [{
+      label: 'Votos',
+      data: dataValues,
+      backgroundColor: ['#103e73','#d61f2c','#3574b8','#8097b1','#7e8ea3','#b9c2cc'],
+      borderRadius: 8,
+      maxBarThickness: 72
+    }]
+  },
+  options: {
+    responsive: true,
+    plugins: {
+      legend: { display: false },
+      title: { display: true, text: 'Conteo de votos por lista' }
+    },
+    scales: {
+      y: { beginAtZero: true, ticks: { precision: 0 } }
+    }
+  }
+});
+setTimeout(()=>{ if(location.hash==='' || location.hash==='#resumen') location.reload(); },30000);
+</script>
+{% endif %}
+{% endblock %}

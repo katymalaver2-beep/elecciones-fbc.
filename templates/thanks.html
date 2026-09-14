@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="center-wrap">
+  <div class="thanks-panel">
+    <div class="check-circle success">✓</div>
+    <h1>¡Gracias por votar!</h1>
+    <p class="hero-text">Tu voto ha sido registrado correctamente.</p>
+    <div class="state-box success"><strong>Participación registrada</strong><span>Tu participación fortalece la vida democrática de la institución educativa.</span></div>
+    <div class="count-note">La pantalla volverá al inicio para el siguiente estudiante.</div>
+  </div>
+</section>
+<script>setTimeout(()=>location.href='/',4500)</script>
+{% endblock %}

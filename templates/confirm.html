@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="center-wrap">
+  <div class="confirm-panel">
+    <div class="check-circle">✓</div>
+    <h1>Confirma tu voto</h1>
+    <p class="hero-text">Verifica cuidadosamente tu elección. Una vez confirmada, no podrá modificarse.</p>
+    <div class="choice-box">
+      {% if is_blank %}
+        <div class="choice-copy only"><strong>VOTO EN BLANCO</strong><span>No se ha elegido una lista.</span></div>
+      {% else %}
+        {% if candidate.symbol_path %}<img src="/{{ candidate.symbol_path }}" alt="Símbolo">{% endif %}
+        <div class="choice-copy">
+          <small>LISTA {{ candidate.list_number }}</small>
+          <strong>{{ candidate.list_name }}</strong>
+          <span>{{ candidate.candidate_name }}</span>
+        </div>
+      {% endif %}
+    </div>
+    <div class="action-row">
+      <a class="btn btn-light" href="/vote">CAMBIAR ELECCIÓN</a>
+      <form action="/vote/confirm" method="post"><button class="btn btn-primary" type="submit">EMITIR VOTO</button></form>
+    </div>
+  </div>
+</section>
+{% endblock %}
