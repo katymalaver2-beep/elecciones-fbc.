@@ -97,6 +97,15 @@ def now_dt():
     return datetime.now()
 
 
+def natural_number_key(value):
+    """Ordena valores numericos primero y deja texto como respaldo, sin CAST en PostgreSQL."""
+    text = str(value or "").strip()
+    try:
+        return (0, int(text), text.lower())
+    except ValueError:
+        return (1, 0, text.lower())
+
+
 def password_hash(password: str) -> str:
     return hashlib.sha256(password.encode("utf-8")).hexdigest()
 
@@ -155,7 +164,7 @@ init_db()
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
     with SessionLocal() as db:
-        grades = db.scalars(select(Student.grade).distinct().order_by(cast(Student.grade, Integer), Student.grade)).all()
+        grades = sorted(db.scalars(select(Student.grade).distinct()).all(), key=natural_number_key)
         total = db.scalar(select(func.count(Student.id))) or 0
         candidates = db.scalar(select(func.count(Candidate.id)).where(Candidate.active == 1)) or 0
     return templates.TemplateResponse(
@@ -207,8 +216,9 @@ def vote_page(request: Request):
     with SessionLocal() as db:
         student = db.get(Student, sid)
         candidates = db.scalars(
-            select(Candidate).where(Candidate.active == 1).order_by(cast(Candidate.list_number, Integer), Candidate.list_number, Candidate.id)
+            select(Candidate).where(Candidate.active == 1).order_by(Candidate.list_number, Candidate.id)
         ).all()
+        candidates.sort(key=lambda c: (natural_number_key(c.list_number), c.id))
         if not student or student.voted_at:
             request.session.pop("student_id", None)
             return RedirectResponse("/?msg=Este+estudiante+ya+votó", status_code=303)
@@ -319,12 +329,13 @@ def dashboard_data():
                 func.sum(case((Student.voted_at.is_not(None), 1), else_=0)).label("voted"),
             )
             .group_by(Student.grade, Student.section)
-            .order_by(cast(Student.grade, Integer), Student.grade, Student.section)
+            .order_by(Student.grade, Student.section)
         ).all()
 
         candidates = db.scalars(
-            select(Candidate).where(Candidate.active == 1).order_by(cast(Candidate.list_number, Integer), Candidate.list_number, Candidate.id)
+            select(Candidate).where(Candidate.active == 1).order_by(Candidate.list_number, Candidate.id)
         ).all()
+        candidates.sort(key=lambda c: (natural_number_key(c.list_number), c.id))
         vote_counts = dict(db.execute(
             select(Vote.candidate_id, func.count(Vote.id)).where(Vote.candidate_id.is_not(None)).group_by(Vote.candidate_id)
         ).all())
@@ -343,8 +354,9 @@ def dashboard_data():
                 "votes": votes,
                 "pct": round((votes / total_votes * 100), 1) if total_votes else 0,
             })
-        results.sort(key=lambda x: (-x["votes"], x["list_number"]))
+        results.sort(key=lambda x: (-x["votes"], natural_number_key(x["list_number"])))
 
+        classrooms = sorted(classrooms, key=lambda r: (natural_number_key(r.grade), str(r.section).lower()))
         classrooms_out = []
         for r in classrooms:
             v = int(r.voted or 0)
@@ -375,7 +387,8 @@ def admin_dashboard(request: Request):
         return RedirectResponse("/admin/login", status_code=303)
     total, voted, turnout, classrooms, results, blank_result, total_votes = dashboard_data()
     with SessionLocal() as db:
-        candidates = db.scalars(select(Candidate).order_by(cast(Candidate.list_number, Integer), Candidate.list_number, Candidate.id)).all()
+        candidates = db.scalars(select(Candidate).order_by(Candidate.list_number, Candidate.id)).all()
+        candidates.sort(key=lambda c: (natural_number_key(c.list_number), c.id))
         for c in candidates:
             db.expunge(c)
     show_results = setting("show_results_live") == "1" or setting("election_open") != "1"
@@ -566,7 +579,7 @@ def export_turnout(request: Request):
     if not admin_required(request):
         return RedirectResponse("/admin/login", status_code=303)
     with SessionLocal() as db:
-        rows = db.scalars(select(Student).order_by(cast(Student.grade, Integer), Student.grade, Student.section, Student.full_name)).all()
+        rows = db.scalars(select(Student).order_by(Student.grade, Student.section, Student.full_name)).all()
     out = io.StringIO()
     w = csv.writer(out)
     w.writerow(["grado", "seccion", "apellidos_nombres", "participo"])
