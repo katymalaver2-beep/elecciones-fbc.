@@ -15,7 +15,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy import (
     create_engine, String, Integer, DateTime, ForeignKey, LargeBinary,
-    select, func, case, cast, delete, update
+    select, func, case, cast, delete, update, inspect, text
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
@@ -53,8 +53,12 @@ class Setting(Base):
 class Student(Base):
     __tablename__ = "students"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    grade: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
-    section: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    # El DNI es el identificador de acceso del elector. Grado y sección se mantienen
+    # como campos opcionales para reportes administrativos, pero nunca se muestran
+    # ni se usan para identificar al estudiante en la pantalla pública.
+    dni: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    grade: Mapped[str] = mapped_column(String(20), nullable=False, default="", index=True)
+    section: Mapped[str] = mapped_column(String(20), nullable=False, default="", index=True)
     full_name: Mapped[str] = mapped_column(String(300), nullable=False)
     voted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
@@ -106,12 +110,31 @@ def natural_number_key(value):
         return (1, 0, text.lower())
 
 
+
+def normalize_dni(value: str) -> str:
+    return "".join(ch for ch in str(value or "").strip() if ch.isdigit())
+
+
+def ensure_student_dni_schema():
+    """Migra de forma segura la versión anterior sin borrar padrón/candidatos/votos."""
+    inspector = inspect(engine)
+    if "students" not in inspector.get_table_names():
+        return
+    columns = {c["name"] for c in inspector.get_columns("students")}
+    with engine.begin() as conn:
+        if "dni" not in columns:
+            conn.execute(text("ALTER TABLE students ADD COLUMN dni VARCHAR(20)"))
+        # PostgreSQL y SQLite aceptan índices únicos con múltiples NULL.
+        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ux_students_dni ON students (dni)"))
+
+
 def password_hash(password: str) -> str:
     return hashlib.sha256(password.encode("utf-8")).hexdigest()
 
 
 def init_db():
     Base.metadata.create_all(engine)
+    ensure_student_dni_schema()
     defaults = {
         "school_name": "I.E. Francisco Bolognesi Cervantes",
         "election_title": "Elecciones Municipales Escolares 2026",
@@ -164,42 +187,30 @@ init_db()
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
     with SessionLocal() as db:
-        grades = sorted(db.scalars(select(Student.grade).distinct()).all(), key=natural_number_key)
         total = db.scalar(select(func.count(Student.id))) or 0
         candidates = db.scalar(select(func.count(Candidate.id)).where(Candidate.active == 1)) or 0
     return templates.TemplateResponse(
         request=request,
         name="home.html",
-        context=base_context(request, grades=grades, total_students=total, candidate_count=candidates),
+        context=base_context(request, total_students=total, candidate_count=candidates),
     )
 
 
-@app.get("/api/sections")
-def api_sections(grade: str):
-    with SessionLocal() as db:
-        rows = db.scalars(select(Student.section).where(Student.grade == grade).distinct().order_by(Student.section)).all()
-    return JSONResponse(list(rows))
-
-
-@app.get("/api/students")
-def api_students(grade: str, section: str):
-    with SessionLocal() as db:
-        rows = db.scalars(
-            select(Student).where(Student.grade == grade, Student.section == section).order_by(Student.full_name)
-        ).all()
-    return JSONResponse([{"id": r.id, "name": r.full_name, "voted": bool(r.voted_at)} for r in rows])
-
-
 @app.post("/identify")
-def identify(request: Request, student_id: int = Form(...)):
+def identify(request: Request, dni: str = Form(...)):
     if setting("election_open") != "1":
         return RedirectResponse("/?msg=La+votación+está+cerrada", status_code=303)
+
+    dni_clean = normalize_dni(dni)
+    if len(dni_clean) != 8:
+        return RedirectResponse("/?msg=Ingresa+un+DNI+válido+de+8+dígitos", status_code=303)
+
     with SessionLocal() as db:
-        row = db.get(Student, student_id)
+        row = db.scalar(select(Student).where(Student.dni == dni_clean))
         if not row:
-            return RedirectResponse("/?msg=Estudiante+no+encontrado", status_code=303)
+            return RedirectResponse("/?msg=No+se+pudo+validar+el+DNI+ingresado", status_code=303)
         if row.voted_at:
-            return RedirectResponse("/?msg=Este+estudiante+ya+registró+su+participación", status_code=303)
+            return RedirectResponse("/?msg=Este+DNI+ya+registró+su+participación", status_code=303)
         request.session["student_id"] = row.id
         request.session.pop("selected_candidate", None)
     return RedirectResponse("/vote", status_code=303)
@@ -260,7 +271,8 @@ def confirm_vote(request: Request):
     if not sid or selected is None:
         return RedirectResponse("/", status_code=303)
     if setting("election_open") != "1":
-        request.session.clear()
+        request.session.pop("student_id", None)
+        request.session.pop("selected_candidate", None)
         return RedirectResponse("/?msg=La+votación+está+cerrada", status_code=303)
 
     try:
@@ -268,7 +280,8 @@ def confirm_vote(request: Request):
             # En PostgreSQL bloquea la fila del estudiante durante la transacción.
             student = db.scalar(select(Student).where(Student.id == sid).with_for_update())
             if not student or student.voted_at:
-                request.session.clear()
+                request.session.pop("student_id", None)
+                request.session.pop("selected_candidate", None)
                 return RedirectResponse("/?msg=Este+estudiante+ya+registró+su+participación", status_code=303)
 
             candidate_id = None if selected == "blank" else int(selected)
@@ -280,10 +293,12 @@ def confirm_vote(request: Request):
             db.add(Vote(candidate_id=candidate_id, cast_at=now_dt()))
             student.voted_at = now_dt()
     except Exception:
-        request.session.clear()
+        request.session.pop("student_id", None)
+        request.session.pop("selected_candidate", None)
         raise
 
-    request.session.clear()
+    request.session.pop("student_id", None)
+    request.session.pop("selected_candidate", None)
     return templates.TemplateResponse(request=request, name="thanks.html", context=base_context(request))
 
 
@@ -328,6 +343,7 @@ def dashboard_data():
                 func.count(Student.id).label("total"),
                 func.sum(case((Student.voted_at.is_not(None), 1), else_=0)).label("voted"),
             )
+            .where(Student.grade != "", Student.section != "")
             .group_by(Student.grade, Student.section)
             .order_by(Student.grade, Student.section)
         ).all()
@@ -502,48 +518,64 @@ async def admin_roster_upload(request: Request, roster: UploadFile = File(...), 
     filename = roster.filename or ""
     data = await roster.read()
     records = []
+
     try:
         if filename.lower().endswith(".csv"):
-            text = data.decode("utf-8-sig")
-            reader = csv.DictReader(io.StringIO(text))
+            text_data = data.decode("utf-8-sig")
+            reader = csv.DictReader(io.StringIO(text_data))
             for row in reader:
+                dni = normalize_dni(row.get("dni") or row.get("DNI") or "")
+                name = str(row.get("apellidos_nombres") or row.get("nombre") or row.get("nombres") or row.get("full_name") or "").strip()
                 grade = str(row.get("grado") or row.get("grade") or "").strip()
                 section = str(row.get("seccion") or row.get("sección") or row.get("section") or "").strip().upper()
-                name = str(row.get("apellidos_nombres") or row.get("nombre") or row.get("nombres") or row.get("full_name") or "").strip()
-                if grade and section and name:
-                    records.append((grade, section, name))
+                if dni and name:
+                    if len(dni) != 8:
+                        raise ValueError(f"DNI inválido: {dni}")
+                    records.append((dni, name, grade, section))
         elif filename.lower().endswith(".xlsx"):
             from openpyxl import load_workbook
             wb = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
             ws = wb.active
             headers = [str(c.value or "").strip().lower() for c in next(ws.iter_rows(min_row=1, max_row=1))]
             idx = {h: i for i, h in enumerate(headers)}
+
             def find_index(options):
                 for o in options:
                     if o in idx:
                         return idx[o]
                 return None
+
+            di = find_index(["dni", "documento", "numero_dni", "número_dni"])
+            ni = find_index(["apellidos_nombres", "nombre", "nombres", "full_name", "apellidos y nombres"])
             gi = find_index(["grado", "grade"])
             si = find_index(["seccion", "sección", "section"])
-            ni = find_index(["apellidos_nombres", "nombre", "nombres", "full_name", "apellidos y nombres"])
-            if gi is None or si is None or ni is None:
-                raise ValueError("Faltan columnas")
+            if di is None or ni is None:
+                raise ValueError("Faltan columnas dni y/o apellidos_nombres")
+
             for row in ws.iter_rows(min_row=2, values_only=True):
-                grade = str(row[gi] or "").strip()
-                section = str(row[si] or "").strip().upper()
-                name = str(row[ni] or "").strip()
-                if grade and section and name:
-                    records.append((grade, section, name))
+                raw_dni = row[di] if di < len(row) else ""
+                dni = normalize_dni(raw_dni)
+                name = str(row[ni] or "").strip() if ni < len(row) else ""
+                grade = str(row[gi] or "").strip() if gi is not None and gi < len(row) else ""
+                section = str(row[si] or "").strip().upper() if si is not None and si < len(row) else ""
+                if dni and name:
+                    if len(dni) != 8:
+                        raise ValueError(f"DNI inválido: {dni}")
+                    records.append((dni, name, grade, section))
         else:
             return RedirectResponse("/admin?msg=Solo+se+admite+CSV+o+XLSX#padron", status_code=303)
-    except Exception:
-        return RedirectResponse("/admin?msg=No+se+pudo+leer+el+archivo.+Verifica+las+columnas#padron", status_code=303)
+    except Exception as exc:
+        return RedirectResponse("/admin?msg=No+se+pudo+leer+el+archivo.+Verifica+que+incluya+DNI+y+apellidos_nombres#padron", status_code=303)
 
     if not records:
         return RedirectResponse("/admin?msg=No+se+encontraron+estudiantes+válidos#padron", status_code=303)
 
-    # elimina duplicados del archivo manteniendo orden
-    unique_records = list(dict.fromkeys(records))
+    # DNI único: si aparece repetido en el archivo, conserva la primera aparición.
+    unique = {}
+    for dni, name, grade, section in records:
+        unique.setdefault(dni, (dni, name, grade, section))
+    unique_records = list(unique.values())
+
     with SessionLocal.begin() as db:
         if mode == "replace":
             votes = db.scalar(select(func.count(Vote.id))) or 0
@@ -551,13 +583,14 @@ async def admin_roster_upload(request: Request, roster: UploadFile = File(...), 
                 return RedirectResponse("/admin?msg=No+se+puede+reemplazar+el+padrón+si+ya+existen+votos#padron", status_code=303)
             db.execute(delete(Student))
 
-        existing = set(db.execute(select(Student.grade, Student.section, Student.full_name)).all())
+        existing_dnis = set(d for d in db.scalars(select(Student.dni).where(Student.dni.is_not(None))).all() if d)
         added = 0
-        for grade, section, name in unique_records:
-            if (grade, section, name) not in existing:
-                db.add(Student(grade=grade, section=section, full_name=name))
-                existing.add((grade, section, name))
+        for dni, name, grade, section in unique_records:
+            if dni not in existing_dnis:
+                db.add(Student(dni=dni, full_name=name, grade=grade, section=section))
+                existing_dnis.add(dni)
                 added += 1
+
     return RedirectResponse(f"/admin?msg=Se+cargaron+{added}+estudiantes#padron", status_code=303)
 
 
@@ -579,14 +612,54 @@ def export_turnout(request: Request):
     if not admin_required(request):
         return RedirectResponse("/admin/login", status_code=303)
     with SessionLocal() as db:
-        rows = db.scalars(select(Student).order_by(Student.grade, Student.section, Student.full_name)).all()
+        rows = db.scalars(select(Student).order_by(Student.full_name)).all()
     out = io.StringIO()
     w = csv.writer(out)
-    w.writerow(["grado", "seccion", "apellidos_nombres", "participo"])
+    w.writerow(["dni", "apellidos_nombres", "grado", "seccion", "participo", "fecha_hora_voto"])
     for r in rows:
-        w.writerow([r.grade, r.section, r.full_name, "SI" if r.voted_at else "NO"])
+        w.writerow([r.dni or "", r.full_name, r.grade or "", r.section or "", "SI" if r.voted_at else "NO", r.voted_at.isoformat(sep=" ", timespec="seconds") if r.voted_at else ""])
     data = out.getvalue().encode("utf-8-sig")
-    return StreamingResponse(io.BytesIO(data), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=participacion_elecciones.csv"})
+    return StreamingResponse(io.BytesIO(data), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=padron_participacion_elecciones.csv"})
+
+
+@app.get("/admin/export/turnout.xlsx")
+def export_turnout_xlsx(request: Request):
+    if not admin_required(request):
+        return RedirectResponse("/admin/login", status_code=303)
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.utils import get_column_letter
+
+    with SessionLocal() as db:
+        rows = db.scalars(select(Student).order_by(Student.full_name)).all()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Participación"
+    headers = ["DNI", "APELLIDOS Y NOMBRES", "GRADO", "SECCIÓN", "PARTICIPÓ", "FECHA Y HORA"]
+    ws.append(headers)
+    for r in rows:
+        ws.append([r.dni or "", r.full_name, r.grade or "", r.section or "", "SÍ" if r.voted_at else "NO", r.voted_at.strftime("%Y-%m-%d %H:%M:%S") if r.voted_at else ""])
+
+    fill = PatternFill("solid", fgColor="0F4279")
+    for cell in ws[1]:
+        cell.fill = fill
+        cell.font = Font(color="FFFFFF", bold=True)
+        cell.alignment = Alignment(horizontal="center")
+    widths = [14, 42, 10, 10, 12, 22]
+    for i, width in enumerate(widths, start=1):
+        ws.column_dimensions[get_column_letter(i)].width = width
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = ws.dimensions
+
+    stream = io.BytesIO()
+    wb.save(stream)
+    stream.seek(0)
+    return StreamingResponse(
+        stream,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=padron_participacion_elecciones.xlsx"},
+    )
 
 
 @app.get("/admin/export/results.csv")

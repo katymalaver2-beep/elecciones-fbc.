@@ -4,12 +4,12 @@
   <div class="hero-left">
     <div class="pill-red">JORNADA DE VOTACIÓN</div>
     <h1>{{ election_title }}</h1>
-    <p class="hero-text">Selecciona tu grado, sección y nombre para ingresar a la cédula de votación.</p>
+    <p class="hero-text">Ingresa tu número de DNI para acceder de forma privada a la cédula de votación.</p>
 
     <div class="hero-steps">
-      <div><strong>1</strong><span>Identificación</span></div>
-      <div><strong>2</strong><span>Selección de lista</span></div>
-      <div><strong>3</strong><span>Confirmación del voto</span></div>
+      <div><strong>1</strong><span>Ingresa tu DNI</span></div>
+      <div><strong>2</strong><span>Selecciona una lista</span></div>
+      <div><strong>3</strong><span>Confirma tu voto</span></div>
     </div>
 
     {% if request.query_params.get('msg') %}<div class="alert-box">{{ request.query_params.get('msg') }}</div>{% endif %}
@@ -17,14 +17,16 @@
     {% if not election_open %}
       <div class="state-box danger"><strong>Votación cerrada</strong><span>El comité electoral debe abrir la jornada desde el panel de administración.</span></div>
     {% elif total_students == 0 %}
-      <div class="state-box warn"><strong>Padrón no cargado</strong><span>Primero debes subir la lista de estudiantes desde Administración.</span></div>
+      <div class="state-box warn"><strong>Padrón no cargado</strong><span>El comité electoral debe cargar previamente el padrón de estudiantes.</span></div>
     {% elif candidate_count == 0 %}
-      <div class="state-box warn"><strong>No hay candidatos registrados</strong><span>Agrega las listas o movimientos antes de iniciar la votación.</span></div>
+      <div class="state-box warn"><strong>No hay candidatos registrados</strong><span>El comité electoral debe registrar las listas antes de iniciar la votación.</span></div>
     {% else %}
-    <form action="/identify" method="post" class="identify-card" id="voterForm">
-      <div class="field"><label>Grado</label><select id="grade" required><option value="">Selecciona...</option>{% for g in grades %}<option value="{{ g }}">{{ g }}.º</option>{% endfor %}</select></div>
-      <div class="field"><label>Sección</label><select id="section" required disabled><option value="">Selecciona...</option></select></div>
-      <div class="field"><label>Apellidos y nombres</label><select name="student_id" id="student" required disabled><option value="">Selecciona...</option></select></div>
+    <form action="/identify" method="post" class="identify-card" autocomplete="off">
+      <div class="field dni-field">
+        <label for="dni">Número de DNI</label>
+        <input id="dni" name="dni" type="text" inputmode="numeric" pattern="[0-9]{8}" maxlength="8" minlength="8" placeholder="Ingresa los 8 dígitos" required autofocus autocomplete="off">
+        <small class="input-help">Tu nombre no se mostrará públicamente. El sistema solo valida que pertenezcas al padrón y que aún no hayas votado.</small>
+      </div>
       <button class="btn btn-primary btn-large" type="submit">INGRESAR A LA VOTACIÓN</button>
     </form>
     {% endif %}
@@ -32,38 +34,25 @@
 
   <aside class="hero-right">
     <div class="info-card">
-      <h3>Información importante</h3>
+      <h3>Privacidad del voto</h3>
       <ul>
-        <li>El sistema registra si el estudiante ya participó.</li>
-        <li>El voto se guarda de manera separada para mantener el voto secreto.</li>
-        <li>Después de votar, la pantalla se reinicia automáticamente.</li>
+        <li>No se muestra ninguna lista pública de estudiantes.</li>
+        <li>El sistema registra quién participó, pero no vincula el DNI con la opción elegida.</li>
+        <li>Una vez emitido el voto, ese DNI no puede volver a votar.</li>
       </ul>
     </div>
     <div class="info-card soft">
       <h3>Antes de votar</h3>
       <ul>
-        <li>Verifica que tu nombre y sección sean correctos.</li>
+        <li>Digita tu DNI completo de 8 dígitos.</li>
         <li>Marca solo una opción en la cédula.</li>
         <li>Revisa tu elección antes de confirmar.</li>
       </ul>
     </div>
   </aside>
 </section>
-
 <script>
-const grade=document.getElementById('grade'), section=document.getElementById('section'), student=document.getElementById('student');
-if(grade){
- grade.addEventListener('change', async()=>{
-  section.innerHTML='<option value="">Selecciona...</option>'; student.innerHTML='<option value="">Selecciona...</option>'; student.disabled=true;
-  if(!grade.value){section.disabled=true;return}
-  const data=await fetch('/api/sections?grade='+encodeURIComponent(grade.value)).then(r=>r.json());
-  data.forEach(s=>{const o=document.createElement('option');o.value=s;o.textContent=s;section.appendChild(o)}); section.disabled=false;
- });
- section.addEventListener('change', async()=>{
-  student.innerHTML='<option value="">Selecciona...</option>'; if(!section.value){student.disabled=true;return}
-  const data=await fetch('/api/students?grade='+encodeURIComponent(grade.value)+'&section='+encodeURIComponent(section.value)).then(r=>r.json());
-  data.forEach(x=>{const o=document.createElement('option');o.value=x.id;o.textContent=x.name+(x.voted?' — YA VOTÓ':'');o.disabled=x.voted;student.appendChild(o)}); student.disabled=false;
- });
-}
+const dniInput=document.getElementById('dni');
+if(dniInput){dniInput.addEventListener('input',()=>{dniInput.value=dniInput.value.replace(/\D/g,'').slice(0,8);});}
 </script>
 {% endblock %}

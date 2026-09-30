@@ -49,9 +49,22 @@
 
 <section id="participacion" class="admin-card">
   <div class="section-header">
-    <h2>Participación por grado y sección</h2>
-    <a class="btn btn-light" href="/admin/export/turnout.csv">Exportar participación</a>
+    <div>
+      <h2>Padrón y participación</h2>
+      <p class="muted">Descarga el padrón administrativo para identificar quiénes votaron y quiénes aún no participaron.</p>
+    </div>
+    <div class="admin-actions">
+      <a class="btn btn-primary" href="/admin/export/turnout.xlsx">DESCARGAR PADRÓN EN EXCEL</a>
+      <a class="btn btn-light" href="/admin/export/turnout.csv">CSV</a>
+    </div>
   </div>
+  <div class="participation-summary">
+    <div><span>Total en padrón</span><strong>{{ total }}</strong></div>
+    <div><span>Ya votaron</span><strong>{{ voted }}</strong></div>
+    <div><span>No votaron</span><strong>{{ missing }}</strong></div>
+  </div>
+  {% if classrooms %}
+  <div class="subsection-title"><h3>Participación por grado y sección</h3><span>Disponible porque el padrón incluye esos campos opcionales.</span></div>
   <div class="table-shell"><table>
     <thead><tr><th>Grado</th><th>Sección</th><th>Padrón</th><th>Votaron</th><th>Faltan</th><th>%</th></tr></thead>
     <tbody>
@@ -60,11 +73,10 @@
         <td>{{ r.grade }}.º</td><td>{{ r.section }}</td><td>{{ r.total }}</td><td>{{ r.voted }}</td><td>{{ r.missing }}</td>
         <td><span class="badge {{ 'good' if r.pct==100 else ('mid' if r.pct>=50 else 'low') }}">{{ r.pct }}%</span></td>
       </tr>
-      {% else %}
-      <tr><td colspan="6">Aún no hay padrón cargado.</td></tr>
       {% endfor %}
     </tbody>
   </table></div>
+  {% endif %}
 </section>
 
 <section id="resultados" class="admin-card">
@@ -141,7 +153,7 @@
 
 <section id="padron" class="admin-card">
   <div class="section-header"><h2>Padrón de estudiantes</h2></div>
-  <p class="muted">Formato requerido: columnas <strong>grado</strong>, <strong>seccion</strong> y <strong>apellidos_nombres</strong>. Acepta archivos CSV o XLSX.</p>
+  <p class="muted">Columnas obligatorias: <strong>dni</strong> y <strong>apellidos_nombres</strong>. Puedes añadir <strong>grado</strong> y <strong>seccion</strong> de forma opcional para conservar estadísticas por aula. El estudiante solo accederá digitando su DNI.</p>
   <form class="form-panel" method="post" action="/admin/roster/upload" enctype="multipart/form-data">
     <div class="form-grid">
       <div class="field"><label>Archivo</label><input type="file" name="roster" accept=".csv,.xlsx" required></div>

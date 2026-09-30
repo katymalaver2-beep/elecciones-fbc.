@@ -148,3 +148,12 @@ a{color:inherit}
   .site-footer{padding:14px 18px}
   .ballot-page,.hero-left,.login-panel,.confirm-panel,.thanks-panel,.admin-card{padding:20px}
 }
+.input-help{display:block;color:var(--muted);font-size:13px;line-height:1.45;margin-top:2px}
+.dni-field input{font-size:24px;letter-spacing:.16em;text-align:center;font-weight:700}
+.private-chip{border-color:#cce1d5;background:#f3fbf6}
+.private-chip strong{color:var(--green)}
+.participation-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:14px 0 20px}
+.participation-summary>div{padding:16px;border:1px solid var(--line);border-radius:16px;background:#fbfcfe}
+.participation-summary span,.participation-summary strong{display:block}.participation-summary span{color:var(--muted);font-size:13px}.participation-summary strong{font-size:28px;color:var(--blue);margin-top:4px}
+.subsection-title{display:flex;justify-content:space-between;align-items:end;gap:12px;margin:18px 0 10px}.subsection-title h3{margin:0;color:var(--blue)}.subsection-title span{color:var(--muted);font-size:13px}
+@media(max-width:720px){.participation-summary{grid-template-columns:1fr}.subsection-title{flex-direction:column;align-items:flex-start}}
