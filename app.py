@@ -72,6 +72,7 @@ class Candidate(Base):
     symbol_data: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
     symbol_mime: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
     active: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    protected: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now)
 
     @property
@@ -128,6 +129,17 @@ def ensure_student_dni_schema():
         conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ux_students_dni ON students (dni)"))
 
 
+def ensure_candidate_protected_schema():
+    """Agrega protección contra borrado accidental a candidatos existentes."""
+    inspector = inspect(engine)
+    if "candidates" not in inspector.get_table_names():
+        return
+    columns = {c["name"] for c in inspector.get_columns("candidates")}
+    if "protected" not in columns:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE candidates ADD COLUMN protected INTEGER NOT NULL DEFAULT 1"))
+
+
 def password_hash(password: str) -> str:
     return hashlib.sha256(password.encode("utf-8")).hexdigest()
 
@@ -135,6 +147,7 @@ def password_hash(password: str) -> str:
 def init_db():
     Base.metadata.create_all(engine)
     ensure_student_dni_schema()
+    ensure_candidate_protected_schema()
     defaults = {
         "school_name": "I.E. Francisco Bolognesi Cervantes",
         "election_title": "Elecciones Municipales Escolares 2026",
@@ -241,65 +254,47 @@ def vote_page(request: Request):
 
 @app.post("/vote/select", response_class=HTMLResponse)
 def select_vote(request: Request, candidate_id: str = Form(...)):
+    """Emite el voto de forma definitiva en un solo paso desde la cédula."""
     sid = request.session.get("student_id")
     if not sid:
         return RedirectResponse("/", status_code=303)
-    is_blank = candidate_id == "blank"
-    with SessionLocal() as db:
-        student = db.get(Student, sid)
-        candidate = None if is_blank else db.get(Candidate, int(candidate_id))
-        if not student or student.voted_at:
-            request.session.pop("student_id", None)
-            return RedirectResponse("/?msg=Este+estudiante+ya+votó", status_code=303)
-        if not is_blank and (not candidate or not candidate.active):
-            return RedirectResponse("/vote", status_code=303)
-        request.session["selected_candidate"] = "blank" if is_blank else int(candidate.id)
-        db.expunge(student)
-        if candidate:
-            db.expunge(candidate)
-    return templates.TemplateResponse(
-        request=request,
-        name="confirm.html",
-        context=base_context(request, student=student, candidate=candidate, is_blank=is_blank),
-    )
-
-
-@app.post("/vote/confirm", response_class=HTMLResponse)
-def confirm_vote(request: Request):
-    sid = request.session.get("student_id")
-    selected = request.session.get("selected_candidate")
-    if not sid or selected is None:
-        return RedirectResponse("/", status_code=303)
     if setting("election_open") != "1":
         request.session.pop("student_id", None)
-        request.session.pop("selected_candidate", None)
         return RedirectResponse("/?msg=La+votación+está+cerrada", status_code=303)
 
+    is_blank = candidate_id == "blank"
     try:
         with SessionLocal.begin() as db:
-            # En PostgreSQL bloquea la fila del estudiante durante la transacción.
             student = db.scalar(select(Student).where(Student.id == sid).with_for_update())
             if not student or student.voted_at:
                 request.session.pop("student_id", None)
-                request.session.pop("selected_candidate", None)
                 return RedirectResponse("/?msg=Este+estudiante+ya+registró+su+participación", status_code=303)
 
-            candidate_id = None if selected == "blank" else int(selected)
-            if candidate_id is not None:
-                candidate = db.get(Candidate, candidate_id)
+            selected_candidate_id = None
+            if not is_blank:
+                try:
+                    selected_candidate_id = int(candidate_id)
+                except (TypeError, ValueError):
+                    return RedirectResponse("/vote", status_code=303)
+                candidate = db.get(Candidate, selected_candidate_id)
                 if not candidate or not candidate.active:
                     return RedirectResponse("/vote", status_code=303)
 
-            db.add(Vote(candidate_id=candidate_id, cast_at=now_dt()))
+            db.add(Vote(candidate_id=selected_candidate_id, cast_at=now_dt()))
             student.voted_at = now_dt()
     except Exception:
         request.session.pop("student_id", None)
-        request.session.pop("selected_candidate", None)
         raise
 
     request.session.pop("student_id", None)
     request.session.pop("selected_candidate", None)
     return templates.TemplateResponse(request=request, name="thanks.html", context=base_context(request))
+
+
+@app.post("/vote/confirm", response_class=HTMLResponse)
+def confirm_vote(request: Request):
+    # Ruta heredada de la versión anterior. La nueva cédula emite el voto directamente.
+    return RedirectResponse("/", status_code=303)
 
 
 @app.get("/candidate-symbol/{candidate_id}")
@@ -496,6 +491,7 @@ async def admin_candidate_add(
             symbol_mime=symbol_mime,
             created_at=now_dt(),
             active=1,
+            protected=1,
         ))
     return RedirectResponse("/admin#candidatos", status_code=303)
 
@@ -509,6 +505,36 @@ def admin_candidate_toggle(candidate_id: int, request: Request):
         if row:
             row.active = 0 if row.active else 1
     return RedirectResponse("/admin#candidatos", status_code=303)
+
+
+@app.post("/admin/candidates/{candidate_id}/protect")
+def admin_candidate_protect(candidate_id: int, request: Request):
+    if not admin_required(request):
+        return RedirectResponse("/admin/login", status_code=303)
+    with SessionLocal.begin() as db:
+        row = db.get(Candidate, candidate_id)
+        if row:
+            row.protected = 0 if row.protected else 1
+    return RedirectResponse("/admin#candidatos", status_code=303)
+
+
+@app.post("/admin/candidates/{candidate_id}/delete")
+def admin_candidate_delete(candidate_id: int, request: Request):
+    if not admin_required(request):
+        return RedirectResponse("/admin/login", status_code=303)
+    if setting("election_open") == "1":
+        return RedirectResponse("/admin?msg=Cierra+la+votación+antes+de+eliminar+una+lista#candidatos", status_code=303)
+    with SessionLocal.begin() as db:
+        row = db.get(Candidate, candidate_id)
+        if not row:
+            return RedirectResponse("/admin#candidatos", status_code=303)
+        if row.protected:
+            return RedirectResponse("/admin?msg=Primero+desprotege+la+lista+para+poder+eliminarla#candidatos", status_code=303)
+        vote_count = db.scalar(select(func.count(Vote.id)).where(Vote.candidate_id == candidate_id)) or 0
+        if vote_count:
+            return RedirectResponse("/admin?msg=No+se+puede+eliminar+una+lista+que+ya+registra+votos.+Puedes+desactivarla#candidatos", status_code=303)
+        db.delete(row)
+    return RedirectResponse("/admin?msg=Lista+eliminada+correctamente#candidatos", status_code=303)
 
 
 @app.post("/admin/roster/upload")

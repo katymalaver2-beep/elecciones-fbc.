@@ -1,11 +1,19 @@
 {% extends "base.html" %}
 {% block content %}
 <section class="ballot-page">
+  <div class="welcome-voter">
+    <span class="welcome-icon">✓</span>
+    <div>
+      <strong>¡Bienvenido(a), {{ student.full_name }}!</strong>
+      <span>Estás participando en una elección libre y democrática.</span>
+    </div>
+  </div>
+
   <div class="ballot-top">
     <div>
       <span class="pill-red">CÉDULA DE VOTACIÓN</span>
       <h1>Elige una sola opción</h1>
-      <p class="hero-text">Marca la lista de tu preferencia y luego confirma tu voto.</p>
+      <p class="hero-text">Selecciona la lista de tu preferencia y emite tu voto.</p>
     </div>
     <div class="voter-chip private-chip">
       <strong>IDENTIDAD VALIDADA</strong>
@@ -13,7 +21,7 @@
     </div>
   </div>
 
-  <form action="/vote/select" method="post">
+  <form action="/vote/select" method="post" id="ballotForm">
     <div class="candidate-grid-pro">
       {% for c in candidates %}
       <label class="candidate-card-pro">
@@ -41,7 +49,19 @@
         <strong class="select-text">Seleccionar opción</strong>
       </label>
     </div>
-    <div class="action-row center"><button class="btn btn-primary btn-large" type="submit">CONTINUAR Y CONFIRMAR</button></div>
+    <div class="action-row center ballot-submit-area">
+      <button class="btn btn-primary btn-large" type="submit">EMITIR VOTO</button>
+      <small>Al presionar “Emitir voto”, tu elección quedará registrada de forma definitiva.</small>
+    </div>
   </form>
 </section>
+<script>
+const ballotForm=document.getElementById('ballotForm');
+if(ballotForm){
+  ballotForm.addEventListener('submit',()=>{
+    const btn=ballotForm.querySelector('button[type="submit"]');
+    if(btn){btn.disabled=true;btn.textContent='REGISTRANDO VOTO…';}
+  });
+}
+</script>
 {% endblock %}

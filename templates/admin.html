@@ -127,13 +127,22 @@
 </section>
 
 <section id="candidatos" class="admin-card">
-  <div class="section-header"><h2>Candidatos y listas</h2></div>
+  <div class="section-header"><div><h2>Candidatos y listas</h2><p class="muted">Las listas están protegidas contra eliminación accidental. Para eliminar una, primero debes desprotegerla. Una lista que ya tenga votos no puede eliminarse.</p></div></div>
   <div class="mini-grid">
     {% for c in candidates %}
     <div class="candidate-mini {{ '' if c.active else 'off' }}">
       {% if c.symbol_path %}<img src="/{{ c.symbol_path }}" alt="Símbolo">{% else %}<div class="mini-symbol">{{ c.list_number }}</div>{% endif %}
-      <div class="candidate-mini-copy"><small>LISTA {{ c.list_number }}</small><strong>{{ c.list_name }}</strong><span>{{ c.candidate_name }}</span></div>
-      <form method="post" action="/admin/candidates/{{ c.id }}/toggle"><button class="btn {{ 'btn-light' if c.active else 'btn-success' }}" type="submit">{{ 'Desactivar' if c.active else 'Activar' }}</button></form>
+      <div class="candidate-mini-copy">
+        <div class="candidate-title-line"><small>LISTA {{ c.list_number }}</small>{% if c.protected %}<span class="protected-badge">🔒 PROTEGIDA</span>{% else %}<span class="unprotected-badge">DESPROTEGIDA</span>{% endif %}</div>
+        <strong>{{ c.list_name }}</strong><span>{{ c.candidate_name }}</span>
+      </div>
+      <div class="candidate-controls">
+        <form method="post" action="/admin/candidates/{{ c.id }}/toggle"><button class="btn {{ 'btn-light' if c.active else 'btn-success' }}" type="submit">{{ 'Desactivar' if c.active else 'Activar' }}</button></form>
+        <form method="post" action="/admin/candidates/{{ c.id }}/protect"><button class="btn {{ 'btn-light' if c.protected else 'btn-dark' }}" type="submit">{{ 'Desproteger' if c.protected else 'Proteger' }}</button></form>
+        {% if not c.protected %}
+        <form method="post" action="/admin/candidates/{{ c.id }}/delete" onsubmit="return confirm('¿Eliminar definitivamente esta lista? Esta acción no se puede deshacer.');"><button class="btn btn-danger" type="submit">Eliminar</button></form>
+        {% endif %}
+      </div>
     </div>
     {% else %}
     <p>Aún no has registrado candidatos.</p>

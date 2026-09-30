@@ -1,13 +1,31 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="center-wrap">
-  <div class="thanks-panel">
+<div id="confettiLayer" class="confetti-layer" aria-hidden="true"></div>
+<section class="center-wrap thanks-stage">
+  <div class="thanks-panel thanks-celebration">
     <div class="check-circle success">✓</div>
     <h1>¡Gracias por votar!</h1>
+    <p class="thanks-important">Tu voto es importante.</p>
     <p class="hero-text">Tu voto ha sido registrado correctamente.</p>
-    <div class="state-box success"><strong>Participación registrada</strong><span>Tu participación fortalece la vida democrática de la institución educativa.</span></div>
-    <div class="count-note">La pantalla volverá al inicio para el siguiente estudiante.</div>
+    <div class="state-box success"><strong>Participación registrada</strong><span>Tu participación fortalece una elección libre y democrática en nuestra institución educativa.</span></div>
+    <div class="count-note">Volviendo al inicio…</div>
   </div>
 </section>
-<script>setTimeout(()=>location.href='/',4500)</script>
+<script>
+(function(){
+  const layer=document.getElementById('confettiLayer');
+  const colors=['#d8242f','#0f4279','#ffffff','#6f8ba8'];
+  for(let i=0;i<72;i++){
+    const piece=document.createElement('i');
+    piece.className='confetti-piece';
+    piece.style.left=(Math.random()*100)+'vw';
+    piece.style.background=colors[Math.floor(Math.random()*colors.length)];
+    piece.style.animationDelay=(Math.random()*.45)+'s';
+    piece.style.animationDuration=(1.5+Math.random()*1.1)+'s';
+    piece.style.transform='rotate('+(Math.random()*360)+'deg)';
+    layer.appendChild(piece);
+  }
+})();
+setTimeout(()=>location.href='/',2800);
+</script>
 {% endblock %}

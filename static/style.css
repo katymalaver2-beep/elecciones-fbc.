@@ -157,3 +157,24 @@ a{color:inherit}
 .participation-summary span,.participation-summary strong{display:block}.participation-summary span{color:var(--muted);font-size:13px}.participation-summary strong{font-size:28px;color:var(--blue);margin-top:4px}
 .subsection-title{display:flex;justify-content:space-between;align-items:end;gap:12px;margin:18px 0 10px}.subsection-title h3{margin:0;color:var(--blue)}.subsection-title span{color:var(--muted);font-size:13px}
 @media(max-width:720px){.participation-summary{grid-template-columns:1fr}.subsection-title{flex-direction:column;align-items:flex-start}}
+
+/* Mejoras de experiencia del elector */
+.welcome-voter{display:flex;align-items:center;gap:14px;margin-bottom:22px;padding:15px 18px;border:1px solid #c8dcf4;border-radius:16px;background:linear-gradient(135deg,#f5f9ff,#ffffff)}
+.welcome-voter .welcome-icon{width:38px;height:38px;flex:0 0 38px;display:grid;place-items:center;border-radius:50%;background:var(--blue);color:#fff;font-weight:900}
+.welcome-voter strong,.welcome-voter span{display:block}.welcome-voter strong{color:var(--blue);font-size:17px}.welcome-voter span{color:var(--muted);font-size:14px;margin-top:3px}
+.ballot-submit-area{flex-direction:column}.ballot-submit-area small{color:var(--muted);font-size:12px;text-align:center}
+.thanks-important{font-size:24px;font-weight:900;color:var(--blue);margin:8px 0 10px}
+.thanks-stage{position:relative;z-index:2}.thanks-celebration{animation:thanksPop .35s ease-out}
+@keyframes thanksPop{from{opacity:0;transform:scale(.96) translateY(8px)}to{opacity:1;transform:scale(1) translateY(0)}}
+.confetti-layer{position:fixed;inset:0;overflow:hidden;pointer-events:none;z-index:80}
+.confetti-piece{position:absolute;top:-18px;width:10px;height:18px;border-radius:2px;box-shadow:0 0 0 1px rgba(15,66,121,.08);animation:confettiFall 2s linear forwards}
+@keyframes confettiFall{0%{top:-24px;opacity:1}100%{top:105vh;transform:translateX(55px) rotate(720deg);opacity:.85}}
+
+/* Protección y eliminación de listas */
+.candidate-controls{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.candidate-controls form{margin:0}
+.candidate-title-line{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:3px}
+.protected-badge,.unprotected-badge{display:inline-flex!important;width:auto!important;margin:0!important;padding:4px 7px;border-radius:999px;font-size:10px!important;font-weight:900;letter-spacing:.04em}
+.protected-badge{background:#edf4fb;color:var(--blue)!important;border:1px solid #cbdced}
+.unprotected-badge{background:#fff1f1;color:#a11f28!important;border:1px solid #efc3c7}
+@media(max-width:720px){.candidate-controls{justify-content:flex-start}.welcome-voter{align-items:flex-start}}
